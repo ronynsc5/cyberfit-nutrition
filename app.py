@@ -66,7 +66,10 @@ def login():
         usuario = Usuario.query.filter_by(email=email).first()
         if usuario and bcrypt.checkpw(senha.encode('utf-8'), usuario.senha):
             login_user(usuario)
-            return redirect(url_for('pagamento'))
+            if usuario.pagou:
+                return redirect(url_for('calculadora'))
+            else:
+                return redirect(url_for('pagamento'))
         else:
             flash('Login inválido')
     return render_template('login.html')
@@ -74,6 +77,9 @@ def login():
 @app.route('/pagamento', methods=['GET', 'POST'])
 @login_required
 def pagamento():
+    if current_user.pagou:
+        return redirect(url_for('calculadora'))
+
     if request.method == 'POST':
         aluno = request.form.get('aluno')
         preco = 10 if aluno == 'sim' else 15
@@ -91,7 +97,9 @@ def pagamento():
             },
             "auto_return": "approved",
             "notification_url": "https://cyberfit-nutrition.onrender.com/webhook",
-            "external_reference": str(current_user.id)
+            "payer": {
+                "email": current_user.email
+            }
         }
 
         preference_response = sdk.preference().create(preference_data)
@@ -107,8 +115,13 @@ def pagamento():
 @app.route('/pagamento-sucesso')
 @login_required
 def pagamento_sucesso():
-    flash('✅ Pagamento em processamento. Assim que for confirmado, o acesso será liberado automaticamente.')
-    return redirect(url_for('calculadora'))
+    # Revalida o acesso se o banco já tiver atualizado via webhook
+    if current_user.pagou:
+        flash('✅ Pagamento confirmado com sucesso! Acesso liberado.')
+        return redirect(url_for('calculadora'))
+    else:
+        flash('🔄 Estamos confirmando seu pagamento... Atualize em instantes.')
+        return redirect(url_for('pagamento'))
 
 @app.route('/falhou')
 @login_required
@@ -173,15 +186,12 @@ def webhook():
         payment_id = data["data"]["id"]
         payment = sdk.payment().get(payment_id)["response"]
         if payment["status"] == "approved":
-            try:
-                user_id = int(payment.get("external_reference", 0))
-                usuario = Usuario.query.get(user_id)
-                if usuario:
-                    usuario.pagou = True
-                    db.session.commit()
-                    print(f"✅ Pagamento confirmado para o usuário {usuario.email}")
-            except Exception as e:
-                print(f"⚠️ Erro no webhook: {e}")
+            email = payment["payer"].get("email")
+            usuario = Usuario.query.filter_by(email=email).first()
+            if usuario:
+                usuario.pagou = True
+                db.session.commit()
+                print(f"✅ Pagamento confirmado para {email}")
     return '', 200
 
 if __name__ == '__main__':
