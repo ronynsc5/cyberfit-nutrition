@@ -20,7 +20,6 @@ app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_USERNAME')
 
-# Inicializando extensões
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 mail = Mail(app)
@@ -192,12 +191,13 @@ def webhook():
             if payment.get("status") == "approved":
                 email = payment["payer"]["email"]
                 usuario = Usuario.query.filter_by(email=email).first()
+
                 if usuario:
                     usuario.premium = True
                     db.session.commit()
                     print(f"✅ Pagamento confirmado para {email}")
                 else:
-                    print(f"❗ Usuário com e-mail {email} não encontrado.")
+                    print(f"❗ Usuário com e-mail {email} não encontrado no banco de dados.")
             else:
                 print(f"⚠️ Pagamento com status: {payment.get('status')}")
         else:
