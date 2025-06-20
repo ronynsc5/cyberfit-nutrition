@@ -1,0 +1,4 @@
+git rm -r --cached .
+git add .
+git commit -m "Aplicado .gitignore e limpo arquivos locais"
+git push
