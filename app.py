@@ -29,7 +29,16 @@ mail = Mail(app)
 sdk = mercadopago.SDK(os.getenv('MP_ACCESS_TOKEN'))
 s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 
-# 👤 Modelo atualizado com o campo nome e premium
+# Aplica as migrações automaticamente no primeiro acesso
+@app.before_first_request
+def atualizar_banco_auto():
+    try:
+        upgrade()
+        print("✅ Banco atualizado automaticamente no primeiro acesso!")
+    except Exception as e:
+        print(f"❌ Erro ao atualizar o banco automaticamente: {e}")
+
+# Modelo atualizado com o campo nome e premium
 class Usuario(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100))
@@ -52,7 +61,7 @@ def registrar():
         email = request.form['email']
         senha = request.form['senha']
 
-        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        if not re.match(r"[^@]+@[^@]+\\.[^@]+", email):
             flash('❗ E-mail inválido.')
             return redirect(url_for('registrar'))
 
@@ -213,15 +222,6 @@ def webhook():
         print("❌ Erro no webhook:", erro)
 
     return '', 200
-
-# 👉 NOVA ROTA pra atualizar o banco no Render
-@app.route('/atualizar-banco')
-def atualizar_banco():
-    try:
-        upgrade()
-        return '✅ Banco atualizado com sucesso!'
-    except Exception as e:
-        return f'❌ Erro ao atualizar banco: {e}'
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
