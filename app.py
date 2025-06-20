@@ -90,7 +90,10 @@ def pagamento():
                 "failure": "https://cyberfit-nutrition.onrender.com/falhou"
             },
             "auto_return": "approved",
-            "notification_url": "https://cyberfit-nutrition.onrender.com/webhook"
+            "notification_url": "https://cyberfit-nutrition.onrender.com/webhook",
+            "payer": {
+                "email": current_user.email  # necessário para identificar o pagador no webhook
+            }
         }
 
         preference_response = sdk.preference().create(preference_data)
@@ -179,11 +182,10 @@ def webhook():
             if usuario:
                 usuario.pagou = True
                 db.session.commit()
-                print(f"✅ Pagamento confirmado para {email}")
+                print(f"✅ Pagamento confirmado via webhook para: {email}")
     return '', 200
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(host="0.0.0.0", port=10000)
-
