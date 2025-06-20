@@ -33,10 +33,11 @@ s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 @app.before_first_request
 def atualizar_banco_auto():
     try:
+        from flask_migrate import upgrade
         upgrade()
-        print("✅ Banco atualizado automaticamente no primeiro acesso!")
+        print("✅ Banco atualizado automaticamente")
     except Exception as e:
-        print(f"❌ Erro ao atualizar o banco automaticamente: {e}")
+        print(f"❌ Erro ao atualizar banco automaticamente: {e}")
 
 # Modelo atualizado com o campo nome e premium
 class Usuario(db.Model, UserMixin):
