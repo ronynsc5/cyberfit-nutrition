@@ -3,16 +3,15 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
+from flask_migrate import Migrate
 import bcrypt
 import mercadopago
 import os
 import re
 from dotenv import load_dotenv
 
-# 🔄 Carrega variáveis de ambiente
 load_dotenv()
 
-# 🔧 Configuração do app Flask
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///usuarios.db'
@@ -23,38 +22,36 @@ app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_USERNAME')
 
-# 📦 Inicializações
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 login_manager = LoginManager(app)
 mail = Mail(app)
 sdk = mercadopago.SDK(os.getenv('MP_ACCESS_TOKEN'))
 s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 
-# 👤 Modelo de Usuário
+# 👤 Modelo atualizado com o campo nome
 class Usuario(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100))  # <- NOVO CAMPO!
     email = db.Column(db.String(150), unique=True)
-    senha = db.Column(db.String(150))  # agora será salva como string
+    senha = db.Column(db.String(150))
     premium = db.Column(db.Boolean, default=False)
 
-# 🔑 Loader para o Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(Usuario, int(user_id))
 
-# 🌐 Página inicial
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# 📝 Registro
 @app.route('/registrar', methods=['GET', 'POST'])
 def registrar():
     if request.method == 'POST':
+        nome = request.form['nome']
         email = request.form['email']
         senha = request.form['senha']
 
-        # Validação básica do e-mail
         if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
             flash('❗ E-mail inválido.')
             return redirect(url_for('registrar'))
@@ -64,14 +61,13 @@ def registrar():
             return redirect(url_for('registrar'))
 
         senha_hash = bcrypt.hashpw(senha.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-        usuario = Usuario(email=email, senha=senha_hash)
+        usuario = Usuario(nome=nome, email=email, senha=senha_hash)
         db.session.add(usuario)
         db.session.commit()
         flash('✅ Cadastro realizado com sucesso!')
         return redirect(url_for('login'))
     return render_template('registrar.html')
 
-# 🔐 Login
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -85,7 +81,6 @@ def login():
             flash('❌ Login inválido')
     return render_template('login.html')
 
-# 💳 Página de pagamento
 @app.route('/pagamento', methods=['GET', 'POST'])
 @login_required
 def pagamento():
@@ -125,20 +120,17 @@ def pagamento():
 
     return render_template('pagamento.html')
 
-# 🎉 Após pagamento
 @app.route('/liberando-acesso')
 @login_required
 def liberando_acesso():
     return render_template('liberando_acesso.html')
 
-# ❌ Falha no pagamento
 @app.route('/falhou')
 @login_required
 def falhou():
     flash('❌ Pagamento não concluído. Tente novamente.')
     return redirect(url_for('pagamento'))
 
-# 🧮 Calculadora de nutrição (rota protegida)
 @app.route('/calculadora')
 @login_required
 def calculadora():
@@ -147,7 +139,6 @@ def calculadora():
         return redirect(url_for('pagamento'))
     return render_template('calculadora.html')
 
-# 🔒 Esqueci a senha
 @app.route('/esqueci-senha', methods=['GET', 'POST'])
 def esqueci_senha():
     if request.method == 'POST':
@@ -165,7 +156,6 @@ def esqueci_senha():
             flash('❗ E-mail não encontrado.')
     return render_template('esqueci_senha.html')
 
-# 🔄 Redefinir senha
 @app.route('/redefinir-senha/<token>', methods=['GET', 'POST'])
 def redefinir_senha(token):
     try:
@@ -185,14 +175,12 @@ def redefinir_senha(token):
             return redirect(url_for('login'))
     return render_template('redefinir_senha.html')
 
-# 🚪 Logout
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('index'))
 
-# 📬 Webhook do Mercado Pago
 @app.route('/webhook', methods=['POST'])
 def webhook():
     print("📩 Webhook recebido")
@@ -226,8 +214,5 @@ def webhook():
 
     return '', 200
 
-# 🚀 Inicia o app
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(host='0.0.0.0', port=10000)
