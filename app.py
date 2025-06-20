@@ -7,7 +7,6 @@ import bcrypt
 import mercadopago
 import os
 from dotenv import load_dotenv
-import time
 
 load_dotenv()
 
@@ -32,7 +31,7 @@ class Usuario(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(150), unique=True)
     senha = db.Column(db.String(150))
-    pagou = db.Column(db.Boolean, default=False)
+    premium = db.Column(db.Boolean, default=False)
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -68,10 +67,10 @@ def login():
         usuario = Usuario.query.filter_by(email=email).first()
         if usuario and bcrypt.checkpw(senha.encode('utf-8'), usuario.senha):
             login_user(usuario)
-            if usuario.pagou:
+            if usuario.premium:
                 return redirect(url_for('calculadora'))
             else:
-                return redirect(url_for('liberando_acesso'))
+                return redirect(url_for('pagamento'))
         else:
             flash('Login inválido')
     return render_template('login.html')
@@ -79,7 +78,7 @@ def login():
 @app.route('/pagamento', methods=['GET', 'POST'])
 @login_required
 def pagamento():
-    if current_user.pagou:
+    if current_user.premium:
         return redirect(url_for('calculadora'))
 
     if request.method == 'POST':
@@ -106,6 +105,7 @@ def pagamento():
 
         preference_response = sdk.preference().create(preference_data)
         preference = preference_response.get("response", {})
+
         if 'init_point' in preference:
             return redirect(preference['init_point'])
         else:
@@ -117,14 +117,7 @@ def pagamento():
 @app.route('/liberando-acesso')
 @login_required
 def liberando_acesso():
-    # checar se pagou (em caso de retorno sem notificação ainda)
-    for _ in range(10):  # tenta por 10s
-        user = Usuario.query.filter_by(id=current_user.id).first()
-        if user.pagou:
-            return redirect(url_for('calculadora'))
-        time.sleep(1)
-    flash('⏳ Processando pagamento, tente novamente em instantes.')
-    return redirect(url_for('pagamento'))
+    return render_template('liberando_acesso.html')
 
 @app.route('/falhou')
 @login_required
@@ -135,7 +128,7 @@ def falhou():
 @app.route('/calculadora')
 @login_required
 def calculadora():
-    if not current_user.pagou:
+    if not current_user.premium:
         flash('⚠️ Acesso restrito. Realize o pagamento.')
         return redirect(url_for('pagamento'))
     return render_template('calculadora.html')
@@ -184,31 +177,34 @@ def logout():
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    print("📩 Webhook recebido")
+    print(request.json)
+
     try:
         data = request.json
-        print("📩 Webhook recebido", data)
+        if data and data.get("type") == "payment":
+            payment_id = data["data"]["id"]
+            print(f"🔍 Verificando pagamento com ID: {payment_id}")
 
-        payment_id = None
-        if 'type' in data and data['type'] == 'payment':
-            payment_id = data['data']['id']
-        elif 'topic' in data and data['topic'] == 'payment':
-            payment_id = data['id']
-
-        if payment_id:
             payment = sdk.payment().get(payment_id)["response"]
             print("💰 Dados do pagamento:", payment)
+
             if payment.get("status") == "approved":
                 email = payment["payer"]["email"]
                 usuario = Usuario.query.filter_by(email=email).first()
                 if usuario:
-                    usuario.pagou = True
+                    usuario.premium = True
                     db.session.commit()
                     print(f"✅ Pagamento confirmado para {email}")
+                else:
+                    print(f"❗ Usuário com e-mail {email} não encontrado.")
+            else:
+                print(f"⚠️ Pagamento com status: {payment.get('status')}")
         else:
-            print("❌ Webhook inválido ou sem tipo 'pagamento'")
+            print("❌ Webhook sem tipo 'payment'")
+    except Exception as erro:
+        print("❌ Erro no webhook:", erro)
 
-    except Exception as e:
-        print("❌ Erro geral no webhook:", e)
     return '', 200
 
 if __name__ == '__main__':
