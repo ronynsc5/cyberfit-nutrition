@@ -91,7 +91,7 @@ def pagamento():
             },
             "auto_return": "approved",
             "notification_url": "https://cyberfit-nutrition.onrender.com/webhook",
-            "external_reference": current_user.email  # ← chave para localizar usuário
+            "external_reference": str(current_user.id)
         }
 
         preference_response = sdk.preference().create(preference_data)
@@ -107,7 +107,7 @@ def pagamento():
 @app.route('/pagamento-sucesso')
 @login_required
 def pagamento_sucesso():
-    flash('✅ Pagamento confirmado com sucesso! Acesso liberado.')
+    flash('✅ Pagamento em processamento. Assim que for confirmado, o acesso será liberado automaticamente.')
     return redirect(url_for('calculadora'))
 
 @app.route('/falhou')
@@ -172,16 +172,16 @@ def webhook():
     if data and data.get("type") == "payment":
         payment_id = data["data"]["id"]
         payment = sdk.payment().get(payment_id)["response"]
-        print("🔎 Pagamento recebido:", payment)  # DEBUG
-
         if payment["status"] == "approved":
-            email = payment.get("external_reference")  # ← garantido
-            if email:
-                usuario = Usuario.query.filter_by(email=email).first()
+            try:
+                user_id = int(payment.get("external_reference", 0))
+                usuario = Usuario.query.get(user_id)
                 if usuario:
                     usuario.pagou = True
                     db.session.commit()
-                    print(f"✅ Pagamento confirmado para {email}")
+                    print(f"✅ Pagamento confirmado para o usuário {usuario.email}")
+            except Exception as e:
+                print(f"⚠️ Erro no webhook: {e}")
     return '', 200
 
 if __name__ == '__main__':
