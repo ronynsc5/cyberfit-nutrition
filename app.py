@@ -7,6 +7,7 @@ import bcrypt
 import mercadopago
 import os
 from dotenv import load_dotenv
+import time
 
 load_dotenv()
 
@@ -70,7 +71,7 @@ def login():
             if usuario.pagou:
                 return redirect(url_for('calculadora'))
             else:
-                return redirect(url_for('pagamento'))
+                return redirect(url_for('liberando_acesso'))
         else:
             flash('Login inválido')
     return render_template('login.html')
@@ -105,9 +106,6 @@ def pagamento():
 
         preference_response = sdk.preference().create(preference_data)
         preference = preference_response.get("response", {})
-        print("🔁 Dados da preferência:", preference)
-        print("🔗 Link de pagamento:", preference.get('init_point'))
-
         if 'init_point' in preference:
             return redirect(preference['init_point'])
         else:
@@ -119,7 +117,14 @@ def pagamento():
 @app.route('/liberando-acesso')
 @login_required
 def liberando_acesso():
-    return render_template('liberando_acesso.html')
+    # checar se pagou (em caso de retorno sem notificação ainda)
+    for _ in range(10):  # tenta por 10s
+        user = Usuario.query.filter_by(id=current_user.id).first()
+        if user.pagou:
+            return redirect(url_for('calculadora'))
+        time.sleep(1)
+    flash('⏳ Processando pagamento, tente novamente em instantes.')
+    return redirect(url_for('pagamento'))
 
 @app.route('/falhou')
 @login_required
@@ -179,37 +184,31 @@ def logout():
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    print("📩 Webhook recebido")
-    print(request.json)
-
     try:
         data = request.json
-        if data and data.get("type") == "payment":
-            payment_id = data["data"]["id"]
-            print(f"🔍 Verificando pagamento com ID: {payment_id}")
+        print("📩 Webhook recebido", data)
 
-            try:
-                payment = sdk.payment().get(payment_id)["response"]
-                print("💰 Dados do pagamento:", payment)
+        payment_id = None
+        if 'type' in data and data['type'] == 'payment':
+            payment_id = data['data']['id']
+        elif 'topic' in data and data['topic'] == 'payment':
+            payment_id = data['id']
 
-                if payment.get("status") == "approved":
-                    email = payment["payer"]["email"]
-                    usuario = Usuario.query.filter_by(email=email).first()
-                    if usuario:
-                        usuario.pagou = True
-                        db.session.commit()
-                        print(f"✅ Pagamento confirmado para {email}")
-                    else:
-                        print(f"❗ Usuário com e-mail {email} não encontrado.")
-                else:
-                    print(f"⚠️ Pagamento com status: {payment.get('status')}")
-            except Exception as erro_pg:
-                print("❌ Erro ao buscar pagamento:", erro_pg)
+        if payment_id:
+            payment = sdk.payment().get(payment_id)["response"]
+            print("💰 Dados do pagamento:", payment)
+            if payment.get("status") == "approved":
+                email = payment["payer"]["email"]
+                usuario = Usuario.query.filter_by(email=email).first()
+                if usuario:
+                    usuario.pagou = True
+                    db.session.commit()
+                    print(f"✅ Pagamento confirmado para {email}")
         else:
-            print("❌ Webhook sem tipo 'payment'")
-    except Exception as erro_geral:
-        print("❌ Erro geral no webhook:", erro_geral)
+            print("❌ Webhook inválido ou sem tipo 'pagamento'")
 
+    except Exception as e:
+        print("❌ Erro geral no webhook:", e)
     return '', 200
 
 if __name__ == '__main__':
