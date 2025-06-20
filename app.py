@@ -3,7 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
-from flask_migrate import Migrate
+from flask_migrate import Migrate, upgrade
 import bcrypt
 import mercadopago
 import os
@@ -29,10 +29,10 @@ mail = Mail(app)
 sdk = mercadopago.SDK(os.getenv('MP_ACCESS_TOKEN'))
 s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 
-# 👤 Modelo atualizado com o campo nome
+# 👤 Modelo atualizado com o campo nome e premium
 class Usuario(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(100))  # <- NOVO CAMPO!
+    nome = db.Column(db.String(100))
     email = db.Column(db.String(150), unique=True)
     senha = db.Column(db.String(150))
     premium = db.Column(db.Boolean, default=False)
@@ -213,6 +213,15 @@ def webhook():
         print("❌ Erro no webhook:", erro)
 
     return '', 200
+
+# 👉 NOVA ROTA pra atualizar o banco no Render
+@app.route('/atualizar-banco')
+def atualizar_banco():
+    try:
+        upgrade()
+        return '✅ Banco atualizado com sucesso!'
+    except Exception as e:
+        return f'❌ Erro ao atualizar banco: {e}'
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
