@@ -8,10 +8,8 @@ import mercadopago
 import os
 from dotenv import load_dotenv
 
-# Carrega variáveis do .env
 load_dotenv()
 
-# Config Flask
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///usuarios.db'
@@ -22,14 +20,12 @@ app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_USERNAME')
 
-# Inicia extensões
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 mail = Mail(app)
 sdk = mercadopago.SDK(os.getenv('MP_ACCESS_TOKEN'))
 s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 
-# Modelo
 class Usuario(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(150), unique=True)
@@ -38,9 +34,8 @@ class Usuario(db.Model, UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return Usuario.query.get(int(user_id))
+    return db.session.get(Usuario, int(user_id))  # SQLAlchemy 2.0
 
-# Rotas
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -71,10 +66,7 @@ def login():
         usuario = Usuario.query.filter_by(email=email).first()
         if usuario and bcrypt.checkpw(senha.encode('utf-8'), usuario.senha):
             login_user(usuario)
-            if usuario.pagou:
-                return redirect(url_for('calculadora'))
-            else:
-                return redirect(url_for('pagamento'))
+            return redirect(url_for('calculadora' if usuario.pagou else 'pagamento'))
         else:
             flash('Login inválido')
     return render_template('login.html')
@@ -100,17 +92,18 @@ def pagamento():
                 "email": current_user.email
             },
             "back_urls": {
-                "success": url_for('liberando_acesso', _external=True),
-                "failure": url_for('falhou', _external=True)
+                "success": "https://cyberfit-nutrition.onrender.com/liberando-acesso",
+                "failure": "https://cyberfit-nutrition.onrender.com/falhou"
             },
             "auto_return": "approved",
-            "notification_url": url_for('webhook', _external=True)
+            "notification_url": "https://cyberfit-nutrition.onrender.com/webhook"
         }
 
         preference_response = sdk.preference().create(preference_data)
         preference = preference_response.get("response", {})
-        print(f"🔁 Dados da preferência: {preference}")
-        print(f"🔗 Link de pagamento: {preference.get('init_point')}")
+        print("🔁 Dados da preferência:", preference)
+        print("🔗 Link de pagamento:", preference.get("init_point"))
+
         if 'init_point' in preference:
             return redirect(preference['init_point'])
         else:
@@ -182,31 +175,36 @@ def logout():
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    print("📩 Webhook recebido")
+    print(request.json)
+
     data = request.json
-    print(f"📩 Webhook recebido: {data}")
 
     if data and data.get("type") == "payment":
-        try:
-            payment_id = data["data"]["id"]
-            payment = sdk.payment().get(payment_id)["response"]
-            print(f"🧾 Detalhes do pagamento: {payment}")
+        payment_id = data["data"]["id"]
+        print(f"🔍 Verificando pagamento com ID: {payment_id}")
 
-            if payment["status"] == "approved":
-                email = payment["payer"]["email"]
-                print(f"📧 E-mail do pagador: {email}")
-                usuario = Usuario.query.filter_by(email=email).first()
-                if usuario:
-                    usuario.pagou = True
-                    db.session.commit()
-                    print(f"✅ Pagamento confirmado para {email}")
-                else:
-                    print(f"❗ Usuário com e-mail {email} não encontrado")
-        except Exception as e:
-            print(f"❌ Erro ao processar webhook: {e}")
+        payment = sdk.payment().get(payment_id)["response"]
+        print("💰 Dados do pagamento:", payment)
+
+        if payment["status"] == "approved":
+            email = payment["payer"]["email"]
+            print(f"📧 Pagador: {email}")
+
+            usuario = Usuario.query.filter_by(email=email).first()
+            if usuario:
+                usuario.pagou = True
+                db.session.commit()
+                print(f"✅ Pagamento confirmado para {email}")
+            else:
+                print(f"❌ Usuário não encontrado: {email}")
+        else:
+            print(f"⚠️ Status do pagamento: {payment['status']}")
+    else:
+        print("❌ Webhook inválido ou sem tipo 'payment'")
 
     return '', 200
 
-# Roda o app
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
