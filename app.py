@@ -29,17 +29,14 @@ mail = Mail(app)
 sdk = mercadopago.SDK(os.getenv('MP_ACCESS_TOKEN'))
 s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 
-# Aplica as migrações automaticamente no primeiro acesso
-@app.before_first_request
+# Função para aplicar migrações automaticamente
 def atualizar_banco_auto():
     try:
-        from flask_migrate import upgrade
         upgrade()
         print("✅ Banco atualizado automaticamente")
     except Exception as e:
         print(f"❌ Erro ao atualizar banco automaticamente: {e}")
 
-# Modelo atualizado com o campo nome e premium
 class Usuario(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100))
@@ -225,4 +222,5 @@ def webhook():
     return '', 200
 
 if __name__ == '__main__':
+    atualizar_banco_auto()
     app.run(host='0.0.0.0', port=10000)
