@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: cyberfit-nutrition
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python app.py"
+    envVars:
+      - key: SECRET_KEY
+        fromEnvVar: SECRET_KEY
+      - key: MAIL_SERVER
+        fromEnvVar: MAIL_SERVER
+      - key: MAIL_PORT
+        fromEnvVar: MAIL_PORT
+      - key: MAIL_USERNAME
+        fromEnvVar: MAIL_USERNAME
+      - key: MAIL_PASSWORD
+        fromEnvVar: MAIL_PASSWORD
+      - key: MP_ACCESS_TOKEN
+        fromEnvVar: MP_ACCESS_TOKEN
