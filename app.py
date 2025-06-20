@@ -91,15 +91,15 @@ def pagamento():
                 "currency_id": "BRL",
                 "unit_price": preco
             }],
-            "back_urls": {
-                "success": "https://cyberfit-nutrition.onrender.com/pagamento-sucesso",
-                "failure": "https://cyberfit-nutrition.onrender.com/falhou"
-            },
-            "auto_return": "approved",
-            "notification_url": "https://cyberfit-nutrition.onrender.com/webhook",
             "payer": {
                 "email": current_user.email
-            }
+            },
+            "back_urls": {
+                "success": url_for('liberando_acesso', _external=True),
+                "failure": url_for('falhou', _external=True)
+            },
+            "auto_return": "approved",
+            "notification_url": url_for('webhook', _external=True)
         }
 
         preference_response = sdk.preference().create(preference_data)
@@ -112,22 +112,22 @@ def pagamento():
 
     return render_template('pagamento.html')
 
-@app.route('/pagamento-sucesso')
+@app.route('/liberando-acesso')
 @login_required
-def pagamento_sucesso():
-    # Revalida o acesso se o banco já tiver atualizado via webhook
-    if current_user.pagou:
-        flash('✅ Pagamento confirmado com sucesso! Acesso liberado.')
-        return redirect(url_for('calculadora'))
-    else:
-        flash('🔄 Estamos confirmando seu pagamento... Atualize em instantes.')
-        return redirect(url_for('pagamento'))
+def liberando_acesso():
+    return render_template('liberando_acesso.html')
 
 @app.route('/falhou')
 @login_required
 def falhou():
     flash('❌ Pagamento não concluído. Tente novamente.')
     return redirect(url_for('pagamento'))
+
+@app.route('/pagamento-sucesso')
+@login_required
+def pagamento_sucesso():
+    # Esse endpoint é mantido por compatibilidade, mas não usado com auto_return + webhook
+    return redirect(url_for('liberando_acesso'))
 
 @app.route('/calculadora')
 @login_required
@@ -186,7 +186,7 @@ def webhook():
         payment_id = data["data"]["id"]
         payment = sdk.payment().get(payment_id)["response"]
         if payment["status"] == "approved":
-            email = payment["payer"].get("email")
+            email = payment["payer"]["email"]
             usuario = Usuario.query.filter_by(email=email).first()
             if usuario:
                 usuario.pagou = True
