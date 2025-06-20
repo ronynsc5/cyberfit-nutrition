@@ -20,6 +20,7 @@ app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_USERNAME')
 
+# Inicializando extensões
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 mail = Mail(app)
@@ -34,7 +35,7 @@ class Usuario(db.Model, UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return db.session.get(Usuario, int(user_id))  # SQLAlchemy 2.0
+    return db.session.get(Usuario, int(user_id))
 
 @app.route('/')
 def index():
@@ -66,7 +67,10 @@ def login():
         usuario = Usuario.query.filter_by(email=email).first()
         if usuario and bcrypt.checkpw(senha.encode('utf-8'), usuario.senha):
             login_user(usuario)
-            return redirect(url_for('calculadora' if usuario.pagou else 'pagamento'))
+            if usuario.pagou:
+                return redirect(url_for('calculadora'))
+            else:
+                return redirect(url_for('pagamento'))
         else:
             flash('Login inválido')
     return render_template('login.html')
@@ -92,17 +96,17 @@ def pagamento():
                 "email": current_user.email
             },
             "back_urls": {
-                "success": "https://cyberfit-nutrition.onrender.com/liberando-acesso",
-                "failure": "https://cyberfit-nutrition.onrender.com/falhou"
+                "success": url_for('liberando_acesso', _external=True),
+                "failure": url_for('falhou', _external=True)
             },
             "auto_return": "approved",
-            "notification_url": "https://cyberfit-nutrition.onrender.com/webhook"
+            "notification_url": url_for('webhook', _external=True)
         }
 
         preference_response = sdk.preference().create(preference_data)
         preference = preference_response.get("response", {})
         print("🔁 Dados da preferência:", preference)
-        print("🔗 Link de pagamento:", preference.get("init_point"))
+        print("🔗 Link de pagamento:", preference.get('init_point'))
 
         if 'init_point' in preference:
             return redirect(preference['init_point'])
@@ -178,34 +182,37 @@ def webhook():
     print("📩 Webhook recebido")
     print(request.json)
 
-    data = request.json
+    try:
+        data = request.json
+        if data and data.get("type") == "payment":
+            payment_id = data["data"]["id"]
+            print(f"🔍 Verificando pagamento com ID: {payment_id}")
 
-    if data and data.get("type") == "payment":
-        payment_id = data["data"]["id"]
-        print(f"🔍 Verificando pagamento com ID: {payment_id}")
+            try:
+                payment = sdk.payment().get(payment_id)["response"]
+                print("💰 Dados do pagamento:", payment)
 
-        payment = sdk.payment().get(payment_id)["response"]
-        print("💰 Dados do pagamento:", payment)
-
-        if payment["status"] == "approved":
-            email = payment["payer"]["email"]
-            print(f"📧 Pagador: {email}")
-
-            usuario = Usuario.query.filter_by(email=email).first()
-            if usuario:
-                usuario.pagou = True
-                db.session.commit()
-                print(f"✅ Pagamento confirmado para {email}")
-            else:
-                print(f"❌ Usuário não encontrado: {email}")
+                if payment.get("status") == "approved":
+                    email = payment["payer"]["email"]
+                    usuario = Usuario.query.filter_by(email=email).first()
+                    if usuario:
+                        usuario.pagou = True
+                        db.session.commit()
+                        print(f"✅ Pagamento confirmado para {email}")
+                    else:
+                        print(f"❗ Usuário com e-mail {email} não encontrado.")
+                else:
+                    print(f"⚠️ Pagamento com status: {payment.get('status')}")
+            except Exception as erro_pg:
+                print("❌ Erro ao buscar pagamento:", erro_pg)
         else:
-            print(f"⚠️ Status do pagamento: {payment['status']}")
-    else:
-        print("❌ Webhook inválido ou sem tipo 'payment'")
+            print("❌ Webhook sem tipo 'payment'")
+    except Exception as erro_geral:
+        print("❌ Erro geral no webhook:", erro_geral)
 
     return '', 200
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host='0.0.0.0', port=10000)
