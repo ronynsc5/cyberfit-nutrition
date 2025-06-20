@@ -8,8 +8,10 @@ import mercadopago
 import os
 from dotenv import load_dotenv
 
+# Carrega variáveis do .env
 load_dotenv()
 
+# Config Flask
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///usuarios.db'
@@ -20,12 +22,14 @@ app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_USERNAME')
 
+# Inicia extensões
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 mail = Mail(app)
 sdk = mercadopago.SDK(os.getenv('MP_ACCESS_TOKEN'))
 s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 
+# Modelo
 class Usuario(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(150), unique=True)
@@ -36,6 +40,7 @@ class Usuario(db.Model, UserMixin):
 def load_user(user_id):
     return Usuario.query.get(int(user_id))
 
+# Rotas
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -115,6 +120,7 @@ def pagamento():
 @app.route('/liberando-acesso')
 @login_required
 def liberando_acesso():
+    # Após alguns segundos o HTML redireciona com JavaScript
     return render_template('liberando_acesso.html')
 
 @app.route('/falhou')
@@ -122,12 +128,6 @@ def liberando_acesso():
 def falhou():
     flash('❌ Pagamento não concluído. Tente novamente.')
     return redirect(url_for('pagamento'))
-
-@app.route('/pagamento-sucesso')
-@login_required
-def pagamento_sucesso():
-    # Esse endpoint é mantido por compatibilidade, mas não usado com auto_return + webhook
-    return redirect(url_for('liberando_acesso'))
 
 @app.route('/calculadora')
 @login_required
@@ -194,6 +194,7 @@ def webhook():
                 print(f"✅ Pagamento confirmado para {email}")
     return '', 200
 
+# Roda o app
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
