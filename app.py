@@ -38,7 +38,7 @@ class Usuario(db.Model, UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return Usuario.query.get(int(user_id))
+    return db.session.get(Usuario, int(user_id))
 
 # Rotas
 @app.route('/')
@@ -50,7 +50,6 @@ def registrar():
     if request.method == 'POST':
         email = request.form['email']
         senha = request.form['senha']
-
         if Usuario.query.filter_by(email=email).first():
             flash('❗ Este e-mail já está cadastrado.')
             return redirect(url_for('registrar'))
@@ -71,10 +70,7 @@ def login():
         usuario = Usuario.query.filter_by(email=email).first()
         if usuario and bcrypt.checkpw(senha.encode('utf-8'), usuario.senha):
             login_user(usuario)
-            if usuario.pagou:
-                return redirect(url_for('calculadora'))
-            else:
-                return redirect(url_for('pagamento'))
+            return redirect(url_for('calculadora') if usuario.pagou else url_for('pagamento'))
         else:
             flash('Login inválido')
     return render_template('login.html')
@@ -100,16 +96,18 @@ def pagamento():
                 "email": current_user.email
             },
             "back_urls": {
-                "success": url_for('liberando_acesso', _external=True),
-                "failure": url_for('falhou', _external=True)
+                "success": "https://cyberfit-nutrition.onrender.com/liberando-acesso",
+                "failure": "https://cyberfit-nutrition.onrender.com/falhou"
             },
             "auto_return": "approved",
-            "notification_url": url_for('webhook', _external=True)
+            "notification_url": "https://cyberfit-nutrition.onrender.com/webhook"
         }
 
         preference_response = sdk.preference().create(preference_data)
         preference = preference_response.get("response", {})
+        print("🔁 Dados da preferência:", preference)
         if 'init_point' in preference:
+            print("🔗 Link de pagamento:", preference['init_point'])
             return redirect(preference['init_point'])
         else:
             flash("❌ Erro ao gerar link de pagamento.")
@@ -120,7 +118,6 @@ def pagamento():
 @app.route('/liberando-acesso')
 @login_required
 def liberando_acesso():
-    # Após alguns segundos o HTML redireciona com JavaScript
     return render_template('liberando_acesso.html')
 
 @app.route('/falhou')
@@ -194,7 +191,6 @@ def webhook():
                 print(f"✅ Pagamento confirmado para {email}")
     return '', 200
 
-# Roda o app
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
