@@ -51,7 +51,7 @@ def registrar():
         email = request.form['email']
         senha = request.form['senha']
 
-        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        if not re.match(r"[^@]+@[^@]+\\.[^@]+", email):
             flash('❗ E-mail inválido.')
             return redirect(url_for('registrar'))
 
@@ -90,6 +90,8 @@ def pagamento():
         aluno = request.form.get('aluno')
         preco = 10 if aluno == 'sim' else 15
 
+        print(f"🧾 Dados do pagamento: aluno={aluno}, preco={preco}, email={current_user.email}")
+
         preference_data = {
             "items": [{
                 "title": "Acesso à Calculadora",
@@ -108,8 +110,14 @@ def pagamento():
             "notification_url": url_for('webhook', _external=True)
         }
 
-        preference_response = sdk.preference().create(preference_data)
-        preference = preference_response.get("response", {})
+        try:
+            preference_response = sdk.preference().create(preference_data)
+            preference = preference_response.get("response", {})
+            print("🔗 Link gerado:", preference.get("init_point"))
+        except Exception as e:
+            print("❌ ERRO ao criar preferência de pagamento:", e)
+            flash("Erro ao criar link de pagamento.")
+            return redirect(url_for('pagamento'))
 
         if 'init_point' in preference:
             return redirect(preference['init_point'])
