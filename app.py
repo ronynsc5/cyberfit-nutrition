@@ -3,7 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
-from flask_migrate import Migrate, upgrade
+from flask_migrate import Migrate
 import bcrypt
 import mercadopago
 import os
@@ -29,14 +29,6 @@ mail = Mail(app)
 sdk = mercadopago.SDK(os.getenv('MP_ACCESS_TOKEN'))
 s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 
-# Função para aplicar migrações automaticamente
-def atualizar_banco_auto():
-    try:
-        upgrade()
-        print("✅ Banco atualizado automaticamente")
-    except Exception as e:
-        print(f"❌ Erro ao atualizar banco automaticamente: {e}")
-
 class Usuario(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100))
@@ -59,7 +51,7 @@ def registrar():
         email = request.form['email']
         senha = request.form['senha']
 
-        if not re.match(r"[^@]+@[^@]+\\.[^@]+", email):
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
             flash('❗ E-mail inválido.')
             return redirect(url_for('registrar'))
 
@@ -222,5 +214,4 @@ def webhook():
     return '', 200
 
 if __name__ == '__main__':
-    atualizar_banco_auto()
     app.run(host='0.0.0.0', port=10000)
